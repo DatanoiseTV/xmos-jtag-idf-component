@@ -136,53 +136,90 @@ xmos_jtag_load_xe(jtag, fw, fw_end - fw, true);
 ```c
 #include "jtag_ice40.h"
 
+/* SPI + control pins for the iCE40 */
 ice40_pins_t ice_pins = {
-    .spi_cs   = GPIO_NUM_20,
-    .spi_clk  = GPIO_NUM_23,
-    .spi_mosi = GPIO_NUM_5,
-    .spi_miso = GPIO_NUM_4,
-    .creset   = GPIO_NUM_21,
-    .cdone    = GPIO_NUM_22,
+    .spi_cs   = GPIO_NUM_20,   /* directly to iCE40 SPI_SS */
+    .spi_clk  = GPIO_NUM_23,   /* SPI clock */
+    .spi_mosi = GPIO_NUM_5,    /* data to iCE40 */
+    .spi_miso = GPIO_NUM_4,    /* data from iCE40 (or GPIO_NUM_NC) */
+    .creset   = GPIO_NUM_21,   /* CRESET_B -- hold low to reset FPGA */
+    .cdone    = GPIO_NUM_22,   /* CDONE -- goes high when configured */
 };
 
-/* Load bitstream to CRAM (volatile -- lost on power cycle, fast for dev) */
+/* Embed the .bin bitstream (output of icepack) */
 extern const uint8_t bitstream[] asm("_binary_top_bin_start");
 extern const uint8_t bitstream_end[] asm("_binary_top_bin_end");
+size_t bitstream_len = bitstream_end - bitstream;
 
-ESP_ERROR_CHECK(ice40_program_cram(
-    &ice_pins, bitstream, bitstream_end - bitstream, 3000));
+/*
+ * Load to CRAM -- volatile, bitstream lost on power cycle.
+ * Fastest option for development (no flash erase/write).
+ *
+ * ice40_program_cram(pins, data, length, timeout_ms)
+ *   timeout_ms: how long to wait for CDONE to go high (3000 = 3 sec)
+ *               set to 0 to skip the CDONE check
+ */
+ESP_ERROR_CHECK(ice40_program_cram(&ice_pins, bitstream, bitstream_len, 3000));
 
-/* Or write to SPI flash (persistent -- FPGA boots automatically) */
-ESP_ERROR_CHECK(ice40_program_flash(
-    &ice_pins, bitstream, bitstream_end - bitstream, 0));
+/*
+ * Write to SPI flash -- persistent, FPGA boots from flash on power-up.
+ *
+ * ice40_program_flash(pins, data, length, offset)
+ *   offset: flash start address (usually 0)
+ */
+ESP_ERROR_CHECK(ice40_program_flash(&ice_pins, bitstream, bitstream_len, 0));
 
-/* Reset the FPGA */
+/*
+ * Reset the FPGA (toggle CRESET, wait for CDONE).
+ *
+ * ice40_reset(pins, timeout_ms)
+ *   timeout_ms: max wait for CDONE (0 to skip)
+ */
 ESP_ERROR_CHECK(ice40_reset(&ice_pins, 3000));
 ```
 
 ### Play an SVF file
 
+SVF (Serial Vector Format) is a standard ASCII format for JTAG operations.
+Tools like Lattice Diamond, Xilinx Vivado, and openFPGALoader can export `.svf` files.
+The player streams through the file and executes each command via the JTAG transport.
+
 ```c
 #include "jtag_svf.h"
 
-/* SVF data loaded from SPIFFS, HTTP download, embedded binary, etc. */
+/* SVF data -- from embedded binary, SPIFFS, HTTP download, PSRAM, etc. */
 extern const char svf_data[] asm("_binary_program_svf_start");
 extern const char svf_data_end[] asm("_binary_program_svf_end");
 
-/* Optional: track progress */
-void on_progress(size_t bytes, size_t total, size_t cmds, void *ctx) {
-    printf("SVF: %zu/%zu bytes, %zu commands\n", bytes, total, cmds);
+/* Optional progress callback -- called every ~100 commands */
+void on_progress(size_t bytes_done, size_t bytes_total,
+                 size_t commands_done, void *user_ctx) {
+    int pct = (int)(bytes_done * 100 / bytes_total);
+    printf("SVF: %d%% (%zu commands)\n", pct, commands_done);
 }
 
 svf_config_t cfg = {
-    .progress_cb = on_progress,
-    .stop_on_mismatch = false,  /* true to abort on TDO verification failure */
+    .progress_cb      = on_progress,   /* NULL to disable */
+    .user_ctx         = NULL,          /* passed to callback */
+    .stop_on_mismatch = false,         /* true = abort if TDO != expected */
 };
 svf_result_t result;
 
-ESP_ERROR_CHECK(svf_play(jtag, svf_data, svf_data_end - svf_data, &cfg, &result));
+/*
+ * svf_play(jtag_handle, svf_text, length, config, result)
+ *   jtag_handle: from xmos_jtag_init() -- works with any JTAG device
+ *   svf_text:    raw SVF file content (ASCII)
+ *   length:      file size in bytes
+ *   config:      playback options (NULL for defaults)
+ *   result:      output stats (NULL to ignore)
+ */
+ESP_ERROR_CHECK(svf_play(
+    jtag,
+    svf_data, svf_data_end - svf_data,
+    &cfg, &result
+));
 
-printf("Done: %zu commands, %zu TDO mismatches\n",
+printf("SVF complete: %zu commands executed, %zu TDO mismatches\n",
        result.commands_executed, result.tdo_mismatches);
 ```
 
