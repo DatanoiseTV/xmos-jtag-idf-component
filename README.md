@@ -2,21 +2,27 @@
 
 ESP-IDF component for programming XMOS xCORE-200 (XU21x) and xCORE.ai (XU3xx) devices via JTAG from an ESP32.
 
-Builds with **ESP-IDF v6.0** (also compatible with v5.x). Verified compiling for ESP32-S3 and ESP32-P4.
+Builds with **ESP-IDF v6.0** (also compatible with v5.x). Verified on ESP32-S3 (WiFi) and ESP32-P4 (Ethernet + PARLIO DMA JTAG).
 
-
-## WebUI Example
+## WebUI
 
 <img width="3360" height="1892" alt="image" src="https://github.com/user-attachments/assets/013fa2a7-c98d-4f61-907a-104fcb167ac7" />
 
-## Protocol Verification
+## JTAG Protocol Verification (Logic Analyzer)
 
-<img width="1728" height="1030" alt="Screenshot 2026-04-10 at 21 36 38" src="https://github.com/user-attachments/assets/e37209d1-0885-47a6-9ec6-7d385134b64d" />CORE
+<img width="1728" height="1030" alt="Screenshot 2026-04-10 at 21 36 38" src="https://github.com/user-attachments/assets/e37209d1-0885-47a6-9ec6-7d385134b64d" />
+
+## Features
+
+- **JTAG chain scan** -- enumerate all devices in the chain (XMOS, Lattice, Xilinx, Espressif, ARM DAP, ...)
+- **Load firmware to xCORE RAM** via JTAG boot mode (parse `.xe` or raw binaries)
+- **Program SPI flash** via a JTAG-loaded stub running on the xCORE
 - **Direct SPI flash programming** by holding XMOS in reset and bit-banging SPI
+- **JTAG boundary scan** -- capture I/O pin states, auto-detect BSR length
 - **Two JTAG transport backends:**
   - **GPIO bit-bang** -- works on any ESP32 variant (S2, S3, C3, C6, H2, P4, ...)
   - **PARLIO with DMA** -- high-speed on ESP32-P4, up to ~40 MHz TCK
-- **Web flasher example** -- WiFi AP with browser UI for uploading and flashing firmware
+- **Web flasher example** -- browser UI with chain visualization, firmware upload, boundary scan
 
 ## Supported XMOS Devices
 
@@ -26,7 +32,7 @@ Builds with **ESP-IDF v6.0** (also compatible with v5.x). Verified compiling for
 | xCORE-200 (XS2) | XU208, XU216 | `0x00005633` | 1-2 |
 | XS1 (legacy) | XS1-G1, XS1-G4, XS1-SU | `0x00002633`, `0x00104731`, `0x00003633` | 1-4 |
 
-> **Note:** All XMOS JTAG signals use **1.8V** levels. Use level shifters if your ESP32 runs at 3.3V I/O. The JTAG module can be reset by holding TMS high for five clock cycles.
+> **Note:** All XMOS JTAG signals use **1.8V** levels. Use level shifters if your ESP32 runs at 3.3V I/O. On the ESP32-P4-NANO, the `LDO_VO4` header pin provides 1.8V for the level shifter reference. The JTAG TAP can be reset by holding TMS high for five clock cycles.
 
 ## Wiring
 
@@ -42,7 +48,9 @@ GPIO (SRST) ──> RST_N    (optional, active low, open-drain)
 GND         ──> GND
 ```
 
-**Waveshare ESP32-P4-NANO** suggested pin assignment (right header, rows 7-10):
+### Waveshare ESP32-P4-NANO
+
+Right header, rows 7-10 (physically adjacent):
 
 | Signal | GPIO | Header Pin |
 |---|---|---|
@@ -53,16 +61,7 @@ GND         ──> GND
 | TRST (opt) | 53 | R-Row 7 outer |
 | SRST (opt) | 54 | R-Row 7 inner |
 
-For **direct SPI flash programming**, also connect to the XMOS SPI flash chip:
-
-```
-ESP32           SPI Flash
-─────           ─────────
-GPIO (CS)   ──> CS
-GPIO (CLK)  ──> CLK
-GPIO (MOSI) ──> MOSI/DI
-GPIO (MISO) <── MISO/DO
-```
+Ethernet (IP101GRI RMII) is used for networking on P4. The `LDO_VO4` pin (right header row 1, outer) provides 1.8V for the JTAG level shifter.
 
 ## Quick Start
 
@@ -102,6 +101,17 @@ ESP_ERROR_CHECK(xmos_jtag_identify(jtag, &info));
 // info.family, info.idcode, info.num_tiles, info.revision
 ```
 
+### Scan JTAG chain
+
+```c
+jtag_chain_t chain;
+ESP_ERROR_CHECK(xmos_jtag_scan_chain(jtag, &chain));
+for (int i = 0; i < chain.num_devices; i++) {
+    printf("Device %d: %s (IDCODE=0x%08lx)\n",
+           i, chain.devices[i].name, chain.devices[i].idcode);
+}
+```
+
 ### Load XE firmware to RAM
 
 ```c
@@ -125,60 +135,64 @@ ESP_ERROR_CHECK(xmos_spi_flash_program(jtag, &spi, image, image_len, 0));
 
 ## Web Flasher Example
 
-The `example/` directory contains a complete ESP-IDF project with a web UI for flashing XMOS firmware over WiFi.
+The `example/` directory contains a complete ESP-IDF project with a web UI.
 
 ```sh
 cd example
-idf.py set-target esp32s3   # or esp32, esp32c3, etc.
+idf.py set-target esp32s3    # WiFi AP mode
+# or
+idf.py set-target esp32p4    # Ethernet (IP101GRI on P4-NANO)
 idf.py build flash monitor
 ```
 
-Connect to WiFi AP **XMOS-Flasher** (password: `xmosjtag`), open http://192.168.4.1.
+**ESP32-S3/C3/etc:** WiFi AP **XMOS-Flasher** (password: `xmosjtag`), open http://192.168.4.1
 
-The web UI lets you:
-- Identify the connected XMOS device (IDCODE, family, tile count)
-- Upload `.xe` or `.bin` firmware files and inspect their contents (segments, entry points, tile mapping)
-- Flash firmware to xCORE RAM or SPI flash with progress tracking
+**ESP32-P4-NANO:** Ethernet via IP101GRI, gets IP from DHCP. Check serial log for address.
 
-> **ESP32-P4 note:** The P4 has no native WiFi. For P4, use Ethernet or the ESP32-C6 coprocessor with `esp_wifi_remote`. The xmos_jtag component itself builds fine for P4 -- only the example's WiFi code needs adaptation.
+The web UI provides:
+- **JTAG chain visualization** -- TDI -> [Device] -> [Device] -> TDO, like FPGA tools
+- **Device identification** -- IDCODE, family, tile count, silicon revision
+- **Boundary scan** -- capture I/O pin states with auto-refresh
+- **Firmware upload** -- parse `.xe`/`.bin` files, show segments, entry points, tile mapping
+- **Flash to RAM or SPI** -- progress tracking
 
 ## Architecture
 
 ```
 components/xmos_jtag/
   include/
-    xmos_jtag.h             Public API
+    xmos_jtag.h             Public API (identify, chain scan, bscan, load, flash)
     xmos_xe.h               XE/ELF parser API
   src/
-    jtag_transport.h         Abstract transport vtable
+    jtag_transport.h         Abstract transport vtable (shift_ir, shift_dr, reset, idle)
     jtag_gpio.c              GPIO bit-bang backend (all ESP32 variants)
     jtag_parlio.c            PARLIO DMA backend (ESP32-P4)
     xmos_regs.h              XMOS register definitions (TAP, MUX, PSWITCH, debug)
-    xmos_jtag.c              XMOS JTAG protocol layer
+    xmos_jtag.c              XMOS JTAG protocol + known device database
     xmos_xe.c                XE file format + ELF32 parser
 ```
 
 ### JTAG Backends
 
-**GPIO bit-bang** -- uses `gpio_set_level`/`gpio_get_level`, portable across all ESP32 chips. ~1-5 MHz TCK.
+**GPIO bit-bang** -- `gpio_set_level`/`gpio_get_level`, portable across all ESP32 chips. ~1-5 MHz TCK.
 
-**PARLIO DMA** (ESP32-P4) -- uses the Parallel IO peripheral with DMA:
+**PARLIO DMA** (ESP32-P4) -- Parallel IO peripheral with DMA:
 - TX: `data_width=2` (TMS + TDI), `clk_out` = TCK
-- RX: `data_width=1` (TDO), clocked from TCK via GPIO matrix
-- Each TX byte encodes 4 JTAG cycles; entire shift sequences are DMA'd in one shot
-- Up to ~40 MHz TCK from 160 MHz PLL
+- RX: `data_width=1` (TDO), clocked from TCK via GPIO matrix loopback
+- Each TX byte encodes 4 JTAG cycles; entire shift sequences DMA'd in one shot
+- Up to ~40 MHz TCK from 160 MHz PLL with fractional divider
 
 ### XMOS JTAG Protocol
 
-1. **Top-level TAP**: 4-bit IR, IEEE 1149.1. IDCODE at IR=1, SET_TEST_MODE at IR=8.
-2. **SETMUX** (IR=4): opens internal chain to OTP + XCORE + CHIP TAPs (20-bit IR total)
+1. **Top-level TAP**: 4-bit IR, IEEE 1149.1. IDCODE at IR=1, SET_TEST_MODE at IR=8
+2. **SETMUX** (IR=4): opens internal chain -- OTP(2b) + XCORE(10b) + CHIP(4b) + BSCAN(4b) = 20-bit IR
 3. **Register access**: xCORE TAP IR = `(reg_index << 2) | rw_flag`, DR = 32/33 bits
-4. **Debug mode**: write `DBG_INT` register, then memory R/W via scratch register mailbox
-5. **JTAG boot**: SET_TEST_MODE with bit 29 (BOOT_FROM_JTAG), load code, set PC, resume
+4. **Debug mode**: write `DBG_INT` register, memory R/W via scratch register mailbox
+5. **JTAG boot**: SET_TEST_MODE bit 29 (BOOT_FROM_JTAG), load code, set PC, resume
 
 ### XE File Format
 
-Verified against the `tool_axe` reference parser and real satellite firmware `.xe` files:
+Verified against `tool_axe` reference parser and real satellite firmware `.xe` files:
 - 12-byte sector headers with 64-bit length field and padding descriptor
 - Sector types: ELF (0x02), BINARY (0x01), GOTO (0x05), CALL (0x06), XN (0x08)
 - Per-tile ELF32 binaries with PT_LOAD segments
@@ -186,7 +200,7 @@ Verified against the `tool_axe` reference parser and real satellite firmware `.x
 
 ## Tests
 
-56 host-side tests covering XE parsing, ELF edge cases, JTAG chain IR encoding, MUX constants, PARLIO bit packing, TAP state machine navigation, and real firmware file validation.
+56 host-side tests covering XE parsing, ELF edge cases, JTAG chain IR encoding, MUX constants, PARLIO bit packing, TAP state machine, and real firmware file validation.
 
 ```sh
 cd test
