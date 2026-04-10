@@ -23,6 +23,8 @@
 #include "soc/soc_caps.h"
 #include "xmos_jtag.h"
 #include "xmos_xe.h"
+#include "jtag_svf.h"
+#include "jtag_ice40.h"
 
 #if SOC_WIFI_SUPPORTED
 #include "esp_wifi.h"
@@ -357,6 +359,13 @@ static esp_err_t handler_upload(httpd_req_t *req)
             entry0 = parsed.entry_points[0];
             for (size_t i = 0; i < parsed.num_segments; i++) code_size += parsed.segments[i].filesz;
         }
+    } else if (s_fw_len >= 3 && (memcmp(s_fw_buf, "HDR", 3) == 0 ||
+               memcmp(s_fw_buf, "SIR", 3) == 0 || memcmp(s_fw_buf, "SDR", 3) == 0 ||
+               memcmp(s_fw_buf, "TRS", 3) == 0 || memcmp(s_fw_buf, "END", 3) == 0 ||
+               memcmp(s_fw_buf, "STA", 3) == 0 || memcmp(s_fw_buf, "FRE", 3) == 0 ||
+               memcmp(s_fw_buf, "RUN", 3) == 0 || s_fw_buf[0] == '!')) {
+        ftype = "svf";
+        code_size = s_fw_len;
     } else {
         code_size = s_fw_len;
     }
@@ -416,6 +425,56 @@ static esp_err_t handler_flash(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* SVF playback task */
+static void svf_progress(size_t bytes, size_t total, size_t cmds, void *ctx)
+{
+    (void)ctx;
+    s_flash_progress = (int)(bytes * 100 / (total ? total : 1));
+    snprintf(s_flash_status, sizeof(s_flash_status),
+             "SVF: %zu commands, %zu/%zu bytes", cmds, bytes, total);
+}
+
+static void svf_task(void *arg)
+{
+    (void)arg;
+    s_flash_progress = 0; s_flash_result = 0;
+    snprintf(s_flash_status, sizeof(s_flash_status), "Playing SVF...");
+
+    svf_config_t cfg = {
+        .progress_cb = svf_progress,
+        .stop_on_mismatch = false,
+    };
+    svf_result_t result;
+    esp_err_t err = svf_play(s_jtag, (const char *)s_fw_buf, s_fw_len, &cfg, &result);
+
+    if (err == ESP_OK) {
+        s_flash_progress = 100;
+        snprintf(s_flash_status, sizeof(s_flash_status),
+                 "SVF done: %zu commands, %zu mismatches",
+                 result.commands_executed, result.tdo_mismatches);
+    } else {
+        s_flash_result = -1;
+        snprintf(s_flash_status, sizeof(s_flash_status),
+                 "SVF failed: %s (%zu cmds)", esp_err_to_name(err),
+                 result.commands_executed);
+    }
+    s_flash_progress = s_flash_result == 0 ? 100 : -1;
+    vTaskDelete(NULL);
+}
+
+/* POST /api/svf -- play uploaded SVF file */
+static esp_err_t handler_svf(httpd_req_t *req)
+{
+    if (!s_fw_ready) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No file"); return ESP_FAIL; }
+    if (s_flash_progress >= 0 && s_flash_progress < 100) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "In progress"); return ESP_FAIL;
+    }
+    xTaskCreate(svf_task, "svf", 16384, NULL, 5, NULL);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    return ESP_OK;
+}
+
 static esp_err_t handler_status(httpd_req_t *req)
 {
     char json[256];
@@ -443,6 +502,7 @@ static void start_webserver(void)
         { .uri = "/api/bscan",     .method = HTTP_GET,  .handler = handler_bscan },
         { .uri = "/api/upload",    .method = HTTP_POST, .handler = handler_upload },
         { .uri = "/api/flash",     .method = HTTP_POST, .handler = handler_flash },
+        { .uri = "/api/svf",       .method = HTTP_POST, .handler = handler_svf },
         { .uri = "/api/status",    .method = HTTP_GET,  .handler = handler_status },
     };
     for (int i = 0; i < sizeof(uris)/sizeof(uris[0]); i++)
