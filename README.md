@@ -131,6 +131,61 @@ extern const uint8_t fw_end[] asm("_binary_firmware_xe_end");
 xmos_jtag_load_xe(jtag, fw, fw_end - fw, true);
 ```
 
+### Program an iCE40 FPGA
+
+```c
+#include "jtag_ice40.h"
+
+ice40_pins_t ice_pins = {
+    .spi_cs   = GPIO_NUM_20,
+    .spi_clk  = GPIO_NUM_23,
+    .spi_mosi = GPIO_NUM_5,
+    .spi_miso = GPIO_NUM_4,
+    .creset   = GPIO_NUM_21,
+    .cdone    = GPIO_NUM_22,
+};
+
+/* Load bitstream to CRAM (volatile -- lost on power cycle, fast for dev) */
+extern const uint8_t bitstream[] asm("_binary_top_bin_start");
+extern const uint8_t bitstream_end[] asm("_binary_top_bin_end");
+
+ESP_ERROR_CHECK(ice40_program_cram(
+    &ice_pins, bitstream, bitstream_end - bitstream, 3000));
+
+/* Or write to SPI flash (persistent -- FPGA boots automatically) */
+ESP_ERROR_CHECK(ice40_program_flash(
+    &ice_pins, bitstream, bitstream_end - bitstream, 0));
+
+/* Reset the FPGA */
+ESP_ERROR_CHECK(ice40_reset(&ice_pins, 3000));
+```
+
+### Play an SVF file
+
+```c
+#include "jtag_svf.h"
+
+/* SVF data loaded from SPIFFS, HTTP download, embedded binary, etc. */
+extern const char svf_data[] asm("_binary_program_svf_start");
+extern const char svf_data_end[] asm("_binary_program_svf_end");
+
+/* Optional: track progress */
+void on_progress(size_t bytes, size_t total, size_t cmds, void *ctx) {
+    printf("SVF: %zu/%zu bytes, %zu commands\n", bytes, total, cmds);
+}
+
+svf_config_t cfg = {
+    .progress_cb = on_progress,
+    .stop_on_mismatch = false,  /* true to abort on TDO verification failure */
+};
+svf_result_t result;
+
+ESP_ERROR_CHECK(svf_play(jtag, svf_data, svf_data_end - svf_data, &cfg, &result));
+
+printf("Done: %zu commands, %zu TDO mismatches\n",
+       result.commands_executed, result.tdo_mismatches);
+```
+
 ---
 
 ## Web Flasher Example
