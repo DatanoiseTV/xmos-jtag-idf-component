@@ -4,6 +4,12 @@ ESP-IDF component for programming XMOS xCORE-200 (XU21x) and xCORE.ai (XU3xx) de
 
 Builds with **ESP-IDF v6.0** (also compatible with v5.x). Verified compiling for ESP32-S3 and ESP32-P4.
 
+
+## WebUI Example
+
+<img width="3360" height="1892" alt="image" src="https://github.com/user-attachments/assets/013fa2a7-c98d-4f61-907a-104fcb167ac7" />
+
+
 ## Features
 
 - **Load firmware to xCORE RAM** via JTAG boot mode (parse `.xe` or raw binaries)
