@@ -2,6 +2,8 @@ set(srcs
     "src/xmos_jtag.c"
     "src/xmos_xe.c"
     "src/jtag_gpio.c"
+    "src/svf_player.c"
+    "src/ice40.c"
 )
 
 set(requires
@@ -13,12 +15,10 @@ set(requires
 
 set(priv_requires "")
 
-# PARLIO backend for ESP32-P4 (and any future chips with PARLIO)
 if(CONFIG_XMOS_JTAG_BACKEND_PARLIO)
     list(APPEND srcs "src/jtag_parlio.c")
 endif()
 
-# Always link esp_driver_parlio on P4 so the dependency checker is satisfied
 if(IDF_TARGET STREQUAL "esp32p4")
     list(APPEND priv_requires "esp_driver_parlio")
 endif()

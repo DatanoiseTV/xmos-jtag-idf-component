@@ -3,484 +3,309 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>XMOS JTAG Flasher</title>
+<title>JTAG Programmer</title>
 <style>
   :root {
-    --bg: #0e1117; --surface: #161b22; --border: #30363d;
-    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff;
-    --green: #3fb950; --red: #f85149; --yellow: #d29922;
+    --bg: #111; --surface: #1a1a1a; --surface2: #222; --border: #333;
+    --text: #d4d4d4; --text2: #888; --text3: #555;
+    --accent: #6ea8fe; --accent-dim: rgba(110,168,254,0.1);
+    --ok: #7ec88b; --ok-dim: rgba(126,200,139,0.1);
+    --warn: #e0a458; --warn-dim: rgba(224,164,88,0.1);
+    --err: #e06060; --err-dim: rgba(224,96,96,0.1);
+    --radius: 4px;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin:0; padding:0; box-sizing:border-box; }
   body {
-    font-family: -apple-system, 'Segoe UI', Roboto, monospace;
+    font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
     background: var(--bg); color: var(--text);
-    min-height: 100vh; padding: 1.5rem;
+    min-height: 100vh; padding: 1.5rem 1rem;
+    -webkit-font-smoothing: antialiased;
   }
-  .container { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 1.5rem; letter-spacing: -0.02em; }
-  h1 span { color: var(--accent); }
+  .wrap { max-width: 680px; margin: 0 auto; }
 
+  /* Header */
+  header { display:flex; align-items:baseline; gap:0.6rem; margin-bottom:1.5rem; }
+  header h1 { font-size:1.1rem; font-weight:600; letter-spacing:-0.02em; color:var(--text); }
+  header .badge {
+    font-size:0.6rem; font-weight:500; text-transform:uppercase; letter-spacing:0.06em;
+    padding:0.15rem 0.45rem; border-radius:2px;
+    background:var(--accent-dim); color:var(--accent); border:1px solid rgba(110,168,254,0.2);
+  }
+
+  /* Card */
   .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:1rem 1.1rem; margin-bottom:0.75rem;
   }
-  .card-title {
-    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.05em; color: var(--text2); margin-bottom: 0.75rem;
+  .card-hdr {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:0.7rem;
   }
+  .card-hdr h2 {
+    font-size:0.65rem; font-weight:600; text-transform:uppercase;
+    letter-spacing:0.08em; color:var(--text3);
+  }
+  .card-hdr .tag {
+    font-size:0.55rem; padding:0.1rem 0.35rem; border-radius:2px;
+    font-weight:500;
+  }
+  .tag-ok { background:var(--ok-dim); color:var(--ok); }
+  .tag-warn { background:var(--warn-dim); color:var(--warn); }
+  .tag-err { background:var(--err-dim); color:var(--err); }
+  .tag-info { background:var(--accent-dim); color:var(--accent); }
 
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-  .info-item label { display: block; font-size: 0.7rem; color: var(--text2); }
-  .info-item .val {
-    font-family: 'SF Mono', 'Cascadia Code', monospace;
-    font-size: 0.9rem; color: var(--text);
-  }
-  .info-item .val.id { color: var(--accent); }
-  .info-item .val.ok { color: var(--green); }
-  .info-item .val.err { color: var(--red); }
+  /* Grid */
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1rem; }
+  .grid.g3 { grid-template-columns:1fr 1fr 1fr; }
+  .field label { display:block; font-size:0.6rem; color:var(--text3); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.1rem; }
+  .field .val { font-size:0.85rem; font-family:'SF Mono','Cascadia Code',monospace; color:var(--text); }
+  .field .val.mono { color:var(--accent); }
+  .field .val.ok { color:var(--ok); }
+  .field .val.err { color:var(--err); }
+  .field .val.dim { color:var(--text2); }
 
-  .segment-table {
-    width: 100%; border-collapse: collapse; font-size: 0.75rem;
-    font-family: monospace; margin-top: 0.5rem;
+  /* Buttons */
+  .btn-row { display:flex; gap:0.4rem; margin-top:0.7rem; }
+  button, .btn {
+    display:inline-flex; align-items:center; gap:0.3rem;
+    padding:0.35rem 0.8rem; border:1px solid var(--border); border-radius:var(--radius);
+    background:var(--surface2); color:var(--text2); font-size:0.75rem;
+    cursor:pointer; transition:all 0.15s; font-family:inherit;
   }
-  .segment-table th {
-    text-align: left; color: var(--text2); font-weight: 500;
-    padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border);
-  }
-  .segment-table td {
-    padding: 0.2rem 0.5rem; border-bottom: 1px solid var(--border);
-  }
-  .segment-table tr:last-child td { border-bottom: none; }
+  button:hover { border-color:var(--text3); color:var(--text); }
+  button:disabled { opacity:0.3; cursor:not-allowed; }
+  button.primary { background:var(--accent-dim); border-color:rgba(110,168,254,0.3); color:var(--accent); }
+  button.primary:hover { background:rgba(110,168,254,0.2); }
 
-  button {
-    display: inline-block; padding: 0.5rem 1.25rem;
-    border: 1px solid var(--border); border-radius: 6px;
-    background: var(--surface); color: var(--text);
-    font-size: 0.85rem; cursor: pointer; transition: 0.15s;
-  }
-  button:hover { border-color: var(--accent); color: var(--accent); }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
-  button.primary {
-    background: var(--accent); color: var(--bg);
-    border-color: var(--accent); font-weight: 600;
-  }
-  button.primary:hover { background: #79c0ff; }
-  button.danger { border-color: var(--red); color: var(--red); }
-  button.danger:hover { background: var(--red); color: var(--bg); }
-
-  .btn-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
-
-  .file-drop {
-    border: 2px dashed var(--border); border-radius: 8px;
-    padding: 2rem; text-align: center; cursor: pointer;
-    transition: 0.2s; position: relative;
-  }
-  .file-drop:hover, .file-drop.dragover {
-    border-color: var(--accent); background: rgba(88,166,255,0.05);
-  }
-  .file-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-  .file-drop .icon { font-size: 2rem; margin-bottom: 0.5rem; }
-  .file-drop .hint { font-size: 0.8rem; color: var(--text2); }
-
-  .progress-bar {
-    height: 6px; background: var(--border); border-radius: 3px;
-    overflow: hidden; margin-top: 0.75rem;
-  }
-  .progress-bar .fill {
-    height: 100%; background: var(--accent); border-radius: 3px;
-    transition: width 0.3s; width: 0%;
-  }
-  .progress-bar .fill.done { background: var(--green); }
-  .progress-bar .fill.error { background: var(--red); }
-
-  .status-msg {
-    font-size: 0.8rem; color: var(--text2); margin-top: 0.5rem;
-    font-family: monospace;
-  }
-
-  .tag {
-    display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px;
-    font-size: 0.7rem; font-weight: 600;
-  }
-  .tag.xe { background: rgba(88,166,255,0.15); color: var(--accent); }
-  .tag.elf { background: rgba(63,185,80,0.15); color: var(--green); }
-  .tag.bin { background: rgba(210,153,34,0.15); color: var(--yellow); }
-
-  /* JTAG chain visualization */
-  .chain {
-    display: flex; align-items: center; gap: 0; overflow-x: auto;
-    padding: 0.75rem 0; margin-top: 0.5rem;
-  }
-  .chain-wire {
-    width: 32px; height: 2px; background: var(--text2); flex-shrink: 0;
-  }
-  .chain-wire.tdi { background: var(--accent); }
-  .chain-wire.tdo { background: var(--green); }
-  .chain-pin {
-    font-size: 0.6rem; color: var(--text2); flex-shrink: 0;
-    text-align: center; line-height: 1;
-  }
-  .chain-pin .label { font-weight: 600; }
+  /* Chain */
+  .chain { display:flex; align-items:center; gap:0; overflow-x:auto; padding:0.5rem 0; }
+  .chain-wire { width:28px; height:1px; background:var(--border); flex-shrink:0; }
+  .chain-wire.tdi { background:var(--accent); opacity:0.5; }
+  .chain-wire.tdo { background:var(--ok); opacity:0.5; }
+  .chain-pin { font-size:0.55rem; color:var(--text3); flex-shrink:0; font-weight:600; letter-spacing:0.04em; }
   .chain-dev {
-    flex-shrink: 0; border: 1.5px solid var(--border); border-radius: 6px;
-    padding: 0.5rem 0.7rem; text-align: center; min-width: 100px;
-    background: var(--surface); position: relative; cursor: default;
-    transition: border-color 0.2s;
+    flex-shrink:0; border:1px solid var(--border); border-radius:var(--radius);
+    padding:0.4rem 0.6rem; text-align:center; min-width:90px;
+    background:var(--surface2); transition:border-color 0.2s;
   }
-  .chain-dev:hover { border-color: var(--accent); }
-  .chain-dev .dev-name {
-    font-size: 0.75rem; font-weight: 600; color: var(--text);
-    white-space: nowrap;
+  .chain-dev:hover { border-color:var(--text3); }
+  .chain-dev .dev-name { font-size:0.7rem; font-weight:600; color:var(--text); white-space:nowrap; }
+  .chain-dev .dev-id { font-size:0.6rem; font-family:monospace; color:var(--accent); margin-top:0.15rem; }
+  .chain-dev .dev-meta { font-size:0.55rem; color:var(--text3); }
+  .chain-dev.highlight { border-color:var(--accent); background:var(--accent-dim); }
+  .chain-dev.unknown { border-style:dashed; }
+
+  /* File drop */
+  .drop {
+    border:1px dashed var(--border); border-radius:var(--radius);
+    padding:1.5rem; text-align:center; cursor:pointer; transition:0.2s;
+    position:relative; background:var(--surface2);
   }
-  .chain-dev .dev-id {
-    font-size: 0.65rem; font-family: monospace; color: var(--accent);
-    margin-top: 0.2rem;
-  }
-  .chain-dev .dev-mfg {
-    font-size: 0.6rem; color: var(--text2); margin-top: 0.15rem;
-  }
-  .chain-dev .dev-ir {
-    font-size: 0.55rem; color: var(--text2);
-  }
-  .chain-dev.xmos { border-color: var(--accent); background: rgba(88,166,255,0.05); }
-  .chain-dev.unknown { border-style: dashed; }
+  .drop:hover, .drop.over { border-color:var(--accent); background:var(--accent-dim); }
+  .drop input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .drop .label { font-size:0.8rem; color:var(--text2); }
+  .drop .hint { font-size:0.65rem; color:var(--text3); margin-top:0.25rem; }
+
+  /* Progress */
+  .pbar { height:3px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:0.5rem; }
+  .pbar .fill { height:100%; border-radius:2px; transition:width 0.3s; width:0%; background:var(--accent); }
+  .pbar .fill.done { background:var(--ok); }
+  .pbar .fill.error { background:var(--err); }
+
+  .status { font-size:0.7rem; color:var(--text2); margin-top:0.35rem; font-family:monospace; }
+
+  /* BSR */
+  .bsr-bits { font-family:monospace; font-size:0.65rem; line-height:1.7; word-break:break-all; }
+  .bsr-bits span { cursor:default; }
+  .bsr-hex { font-family:monospace; font-size:0.7rem; color:var(--accent); word-break:break-all; }
+
+  /* Table */
+  table.info { width:100%; border-collapse:collapse; font-size:0.7rem; margin-top:0.5rem; }
+  table.info th { text-align:left; color:var(--text3); font-weight:500; padding:0.2rem 0.5rem; border-bottom:1px solid var(--border); }
+  table.info td { padding:0.2rem 0.5rem; border-bottom:1px solid var(--border); font-family:monospace; }
+
+  /* Divider */
+  hr { border:none; border-top:1px solid var(--border); margin:0.5rem 0; }
+
+  /* Tabs for firmware type */
+  .ftag { display:inline-block; padding:0.1rem 0.4rem; border-radius:2px; font-size:0.6rem; font-weight:600; }
+  .ftag.xe { background:var(--accent-dim); color:var(--accent); }
+  .ftag.elf { background:var(--ok-dim); color:var(--ok); }
+  .ftag.bin { background:var(--warn-dim); color:var(--warn); }
+  .ftag.svf { background:rgba(200,140,255,0.12); color:#c08cff; }
+
+  .hidden { display:none !important; }
 </style>
 </head>
 <body>
-<div class="container">
-  <h1><span>XMOS</span> JTAG Flasher</h1>
+<div class="wrap">
 
-  <!-- Device Info -->
+  <header>
+    <h1>JTAG Programmer</h1>
+    <span class="badge">ESP-IDF</span>
+  </header>
+
+  <!-- Device -->
   <div class="card">
-    <div class="card-title">Device</div>
-    <div class="info-grid">
-      <div class="info-item">
-        <label>IDCODE</label>
-        <div class="val id" id="idcode">--</div>
-      </div>
-      <div class="info-item">
-        <label>Family</label>
-        <div class="val" id="family">--</div>
-      </div>
-      <div class="info-item">
-        <label>Tiles</label>
-        <div class="val" id="tiles">--</div>
-      </div>
-      <div class="info-item">
-        <label>Revision</label>
-        <div class="val" id="revision">--</div>
-      </div>
+    <div class="card-hdr">
+      <h2>Device</h2>
+      <span class="tag tag-info" id="dev-status">--</span>
+    </div>
+    <div class="grid">
+      <div class="field"><label>IDCODE</label><div class="val mono" id="idcode">--</div></div>
+      <div class="field"><label>Family</label><div class="val" id="family">--</div></div>
+      <div class="field"><label>Tiles</label><div class="val" id="tiles">--</div></div>
+      <div class="field"><label>Revision</label><div class="val" id="revision">--</div></div>
     </div>
     <div class="btn-row">
-      <button onclick="identify()">Identify Device</button>
+      <button class="primary" onclick="identify()">Scan</button>
     </div>
   </div>
 
-  <!-- JTAG Chain -->
-  <div class="card" id="chain-card" style="display:none">
-    <div class="card-title">JTAG Chain</div>
+  <!-- Chain -->
+  <div class="card hidden" id="chain-card">
+    <div class="card-hdr"><h2>JTAG Chain</h2><span class="tag tag-info" id="chain-count">0</span></div>
     <div id="chain-view"></div>
   </div>
 
   <!-- Boundary Scan -->
-  <div class="card" id="bscan-card" style="display:none">
-    <div class="card-title">Boundary Scan</div>
-    <div class="info-grid">
-      <div class="info-item">
-        <label>BSR Length</label>
-        <div class="val" id="bsr-len">--</div>
-      </div>
-      <div class="info-item">
-        <label>Last Capture</label>
-        <div class="val" id="bsr-time">--</div>
-      </div>
+  <div class="card hidden" id="bscan-card">
+    <div class="card-hdr"><h2>Boundary Scan</h2><span class="tag tag-info" id="bsr-len">--</span></div>
+    <div class="btn-row" style="margin-top:0">
+      <button onclick="bscan()">Capture</button>
+      <button onclick="bscanAuto()" id="btn-auto">Auto</button>
     </div>
-    <div class="btn-row">
-      <button onclick="bscan()">Capture Pins</button>
-      <button onclick="bscanAuto()" id="btn-auto">Auto Refresh</button>
-    </div>
-    <div id="bsr-display" style="display:none; margin-top:0.75rem">
-      <div style="font-size:0.7rem; color:var(--text2); margin-bottom:0.25rem">
-        Hex (MSB first)
-      </div>
-      <div id="bsr-hex" style="font-family:monospace; font-size:0.8rem; word-break:break-all; color:var(--accent)"></div>
-      <div style="font-size:0.7rem; color:var(--text2); margin-top:0.5rem; margin-bottom:0.25rem">
-        Pin states (MSB first, bit index shown on hover)
-      </div>
-      <div id="bsr-bits" style="font-family:monospace; font-size:0.75rem; line-height:1.6; word-break:break-all"></div>
+    <div id="bsr-display" class="hidden" style="margin-top:0.5rem">
+      <div class="bsr-hex" id="bsr-hex"></div>
+      <div class="bsr-bits" id="bsr-bits" style="margin-top:0.3rem"></div>
     </div>
   </div>
 
   <!-- Firmware Upload -->
   <div class="card">
-    <div class="card-title">Firmware</div>
-    <div class="file-drop" id="dropzone">
-      <input type="file" id="fileInput" accept=".xe,.bin,.elf">
-      <div class="icon">&#8679;</div>
-      <div>Drop <b>.xe</b> or <b>.bin</b> file here</div>
-      <div class="hint">or click to browse</div>
+    <div class="card-hdr"><h2>Firmware</h2></div>
+    <div class="drop" id="dropzone">
+      <input type="file" id="fileInput" accept=".xe,.bin,.elf,.svf">
+      <div class="label">Drop firmware file</div>
+      <div class="hint">.xe .bin .elf .svf</div>
     </div>
-    <div id="fw-info" style="display:none; margin-top: 0.75rem;">
-      <div class="info-grid">
-        <div class="info-item">
-          <label>File</label>
-          <div class="val" id="fw-name">--</div>
-        </div>
-        <div class="info-item">
-          <label>Type</label>
-          <div class="val" id="fw-type">--</div>
-        </div>
-        <div class="info-item">
-          <label>Size</label>
-          <div class="val" id="fw-size">--</div>
-        </div>
-        <div class="info-item">
-          <label>Code</label>
-          <div class="val" id="fw-code">--</div>
-        </div>
-        <div class="info-item">
-          <label>Tiles</label>
-          <div class="val" id="fw-tiles">--</div>
-        </div>
-        <div class="info-item">
-          <label>Segments</label>
-          <div class="val" id="fw-segs">--</div>
-        </div>
-        <div class="info-item">
-          <label>Entry Tile 0</label>
-          <div class="val id" id="fw-entry0">--</div>
-        </div>
-        <div class="info-item">
-          <label>Entry Tile 1</label>
-          <div class="val id" id="fw-entry1">--</div>
-        </div>
+    <div id="fw-info" class="hidden" style="margin-top:0.6rem">
+      <div class="grid">
+        <div class="field"><label>File</label><div class="val" id="fw-name">--</div></div>
+        <div class="field"><label>Type</label><div class="val" id="fw-type">--</div></div>
+        <div class="field"><label>Size</label><div class="val" id="fw-size">--</div></div>
+        <div class="field"><label>Code</label><div class="val" id="fw-code">--</div></div>
+        <div class="field"><label>Tiles</label><div class="val" id="fw-tiles">--</div></div>
+        <div class="field"><label>Segments</label><div class="val" id="fw-segs">--</div></div>
+        <div class="field"><label>Entry T0</label><div class="val mono" id="fw-entry0">--</div></div>
+        <div class="field"><label>Entry T1</label><div class="val mono" id="fw-entry1">--</div></div>
       </div>
     </div>
   </div>
 
-  <!-- Flash Controls -->
+  <!-- Program -->
   <div class="card">
-    <div class="card-title">Program</div>
-    <div class="btn-row">
-      <button class="primary" id="btn-ram" onclick="flash('ram')" disabled>
-        Load to RAM
-      </button>
-      <button class="danger" id="btn-flash" onclick="flash('flash')" disabled>
-        Write SPI Flash
-      </button>
+    <div class="card-hdr"><h2>Program</h2></div>
+    <div class="btn-row" style="margin-top:0">
+      <button class="primary" id="btn-ram" onclick="flash('ram')" disabled>Load to RAM</button>
+      <button id="btn-flash" onclick="flash('flash')" disabled>Write Flash</button>
+      <button id="btn-svf" onclick="playSvf()" disabled>Play SVF</button>
     </div>
-    <div class="progress-bar" id="pbar" style="display:none">
-      <div class="fill" id="pfill"></div>
-    </div>
-    <div class="status-msg" id="status"></div>
+    <div class="pbar hidden" id="pbar"><div class="fill" id="pfill"></div></div>
+    <div class="status" id="status"></div>
   </div>
+
 </div>
 
 <script>
-const $ = id => document.getElementById(id);
+const $=id=>document.getElementById(id);
+const fmt=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';
+let uploadedType='';
 
-function fmt(n) {
-  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
-  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
-  return n + ' B';
+async function identify(){
+  try{
+    try{const r=await fetch('/api/chain');const d=await r.json();renderChain(d.devices||[]);}catch(e){}
+    const r=await fetch('/api/identify');const d=await r.json();
+    $('idcode').textContent=d.idcode;
+    $('family').textContent=d.family;
+    $('family').className='val'+(d.ok?' ok':' err');
+    $('tiles').textContent=d.tiles;
+    $('revision').textContent=d.revision;
+    $('dev-status').textContent=d.ok?'Connected':'No device';
+    $('dev-status').className='tag '+(d.ok?'tag-ok':'tag-err');
+    if(d.ok){updateButtons();if(d.bsr_len>0){show('bscan-card');$('bsr-len').textContent=d.bsr_len+' bits';}}
+  }catch(e){$('family').textContent='Error';$('family').className='val err';$('dev-status').textContent='Error';$('dev-status').className='tag tag-err';}
 }
 
-async function identify() {
-  try {
-    /* Scan chain first (non-fatal if it fails) */
-    try {
-      const cr = await fetch('/api/chain');
-      const cd = await cr.json();
-      renderChain(cd.devices || []);
-    } catch(ce) {
-      console.warn('Chain scan failed:', ce);
-    }
-
-    /* Then identify XMOS device */
-    const r = await fetch('/api/identify');
-    const d = await r.json();
-    $('idcode').textContent = d.idcode;
-    $('family').textContent = d.family;
-    $('family').className = 'val ' + (d.ok ? 'ok' : 'err');
-    $('tiles').textContent = d.tiles;
-    $('revision').textContent = d.revision;
-    if (d.ok) {
-      updateButtons();
-      if (d.bsr_len > 0) {
-        $('bscan-card').style.display = 'block';
-        $('bsr-len').textContent = d.bsr_len + ' bits';
-      }
-    }
-  } catch(e) {
-    $('family').textContent = 'Error: ' + e.message;
-    $('family').className = 'val err';
-  }
-}
-
-function renderChain(devices) {
-  const el = $('chain-view');
-  if (!devices || devices.length === 0) {
-    el.innerHTML = '<div style="color:var(--text2);font-size:0.8rem">No devices found in chain</div>';
-    $('chain-card').style.display = 'block';
-    return;
-  }
-
-  let html = '<div class="chain">';
-
-  /* TDI pin */
-  html += '<div class="chain-pin"><div class="label" style="color:var(--accent)">TDI</div></div>';
-  html += '<div class="chain-wire tdi"></div>';
-
-  devices.forEach((d, i) => {
-    const isXmos = d.name.startsWith('XMOS');
-    const isUnknown = d.name === 'Unknown';
-    const cls = isXmos ? 'xmos' : isUnknown ? 'unknown' : '';
-
-    html += '<div class="chain-dev ' + cls + '">';
-    html += '<div class="dev-name">' + d.name + '</div>';
-    html += '<div class="dev-id">' + d.idcode + '</div>';
-    html += '<div class="dev-mfg">MFG: ' + d.manufacturer + ' Part: ' + d.part + '</div>';
-    if (d.ir_len > 0) html += '<div class="dev-ir">IR: ' + d.ir_len + '-bit</div>';
-    html += '</div>';
-
-    /* Wire between devices */
-    if (i < devices.length - 1) {
-      html += '<div class="chain-wire"></div>';
-    }
+function renderChain(devs){
+  if(!devs||!devs.length){$('chain-view').innerHTML='<div style="font-size:0.7rem;color:var(--text3)">No devices</div>';show('chain-card');return;}
+  let h='<div class="chain"><div class="chain-pin" style="color:var(--accent)">TDI</div><div class="chain-wire tdi"></div>';
+  devs.forEach((d,i)=>{
+    const cls=d.name.startsWith('XMOS')?'highlight':d.name==='Unknown'?'unknown':'';
+    h+='<div class="chain-dev '+cls+'"><div class="dev-name">'+d.name+'</div><div class="dev-id">'+d.idcode+'</div>';
+    h+='<div class="dev-meta">'+d.manufacturer+' / '+d.part+'</div></div>';
+    if(i<devs.length-1)h+='<div class="chain-wire"></div>';
   });
-
-  html += '<div class="chain-wire tdo"></div>';
-  html += '<div class="chain-pin"><div class="label" style="color:var(--green)">TDO</div></div>';
-  html += '</div>';
-
-  /* Summary */
-  html += '<div style="font-size:0.7rem;color:var(--text2);margin-top:0.25rem">';
-  html += devices.length + ' device' + (devices.length > 1 ? 's' : '') + ' in chain';
-  html += '</div>';
-
-  el.innerHTML = html;
-  $('chain-card').style.display = 'block';
+  h+='<div class="chain-wire tdo"></div><div class="chain-pin" style="color:var(--ok)">TDO</div></div>';
+  $('chain-view').innerHTML=h;$('chain-count').textContent=devs.length+' device'+(devs.length>1?'s':'');show('chain-card');
 }
 
-/* Boundary scan */
-let autoTimer = null;
-
-async function bscan() {
-  try {
-    const r = await fetch('/api/bscan');
-    const d = await r.json();
-    $('bsr-display').style.display = 'block';
-    $('bsr-hex').textContent = d.hex;
-    $('bsr-time').textContent = new Date().toLocaleTimeString();
-
-    /* Render bits with color: 1=green, 0=dim */
-    let html = '';
-    const bits = d.bits;
-    for (let i = 0; i < bits.length; i++) {
-      const bitIdx = bits.length - 1 - i;
-      const c = bits[i] === '1' ? 'var(--green)' : 'var(--border)';
-      html += '<span title="bit ' + bitIdx + '" style="color:' + c + '">' + bits[i] + '</span>';
-      if ((i + 1) % 8 === 0 && i < bits.length - 1) html += ' ';
-    }
-    $('bsr-bits').innerHTML = html;
-  } catch(e) {
-    $('bsr-hex').textContent = 'Error: ' + e.message;
-  }
+function show(id){$(id).classList.remove('hidden');}
+function updateButtons(){
+  const ok=$('family').classList.contains('ok')&&!$('fw-info').classList.contains('hidden');
+  $('btn-ram').disabled=!ok||uploadedType==='svf';
+  $('btn-flash').disabled=!ok||uploadedType==='svf';
+  $('btn-svf').disabled=uploadedType!=='svf';
 }
 
-function bscanAuto() {
-  if (autoTimer) {
-    clearInterval(autoTimer);
-    autoTimer = null;
-    $('btn-auto').textContent = 'Auto Refresh';
-    return;
-  }
-  autoTimer = setInterval(bscan, 500);
-  $('btn-auto').textContent = 'Stop Auto';
-  bscan();
+let autoTimer=null;
+async function bscan(){
+  try{const r=await fetch('/api/bscan');const d=await r.json();show('bsr-display');$('bsr-hex').textContent=d.hex;
+    let h='';const b=d.bits;for(let i=0;i<b.length;i++){const c=b[i]==='1'?'var(--ok)':'var(--border)';h+='<span title="bit '+(b.length-1-i)+'" style="color:'+c+'">'+b[i]+'</span>';if((i+1)%8===0&&i<b.length-1)h+=' ';}
+    $('bsr-bits').innerHTML=h;
+  }catch(e){$('bsr-hex').textContent='Error';}
 }
+function bscanAuto(){if(autoTimer){clearInterval(autoTimer);autoTimer=null;$('btn-auto').textContent='Auto';return;}autoTimer=setInterval(bscan,500);$('btn-auto').textContent='Stop';bscan();}
 
-function updateButtons() {
-  const ok = $('family').classList.contains('ok') && $('fw-info').style.display !== 'none';
-  $('btn-ram').disabled = !ok;
-  $('btn-flash').disabled = !ok;
-}
+const dz=$('dropzone'),fi=$('fileInput');
+['dragenter','dragover'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault();dz.classList.add('over');}));
+['dragleave','drop'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault();dz.classList.remove('over');}));
+dz.addEventListener('drop',ev=>{if(ev.dataTransfer.files.length)upload(ev.dataTransfer.files[0]);});
+fi.addEventListener('change',()=>{if(fi.files.length)upload(fi.files[0]);});
 
-const dropzone = $('dropzone');
-const fileInput = $('fileInput');
-
-['dragenter','dragover'].forEach(e =>
-  dropzone.addEventListener(e, ev => { ev.preventDefault(); dropzone.classList.add('dragover'); }));
-['dragleave','drop'].forEach(e =>
-  dropzone.addEventListener(e, ev => { ev.preventDefault(); dropzone.classList.remove('dragover'); }));
-
-dropzone.addEventListener('drop', ev => {
-  if (ev.dataTransfer.files.length) upload(ev.dataTransfer.files[0]);
-});
-fileInput.addEventListener('change', () => {
-  if (fileInput.files.length) upload(fileInput.files[0]);
-});
-
-async function upload(file) {
-  $('status').textContent = 'Uploading ' + file.name + '...';
-  $('fw-name').textContent = file.name;
-
-  try {
-    const r = await fetch('/api/upload', { method: 'POST', body: file });
-    const d = await r.json();
-    if (!d.ok) throw new Error('Upload rejected');
-
-    const typeTag = { xe: 'xe', elf: 'elf', bin: 'bin' }[d.type] || 'bin';
-    $('fw-type').innerHTML = '<span class="tag ' + typeTag + '">' + d.type.toUpperCase() + '</span>';
-    $('fw-size').textContent = fmt(d.size);
-    $('fw-code').textContent = fmt(d.code_size);
-    $('fw-tiles').textContent = d.tiles;
-    $('fw-segs').textContent = d.segments;
-    $('fw-entry0').textContent = d.entry0 === '0x00000000' ? 'boot ROM' : d.entry0;
-    $('fw-entry1').textContent = d.entry1 === '0x00000000' ? 'boot ROM' : d.entry1;
-    $('fw-info').style.display = 'block';
-    $('status').textContent = 'Firmware ready.';
+async function upload(file){
+  $('status').textContent='Uploading '+file.name+'...';$('fw-name').textContent=file.name;
+  uploadedType=file.name.endsWith('.svf')?'svf':'';
+  try{
+    const r=await fetch('/api/upload',{method:'POST',body:file});const d=await r.json();
+    if(!d.ok)throw new Error('Rejected');
+    const tt={xe:'xe',elf:'elf',bin:'bin',svf:'svf'}[d.type]||'bin';
+    $('fw-type').innerHTML='<span class="ftag '+tt+'">'+d.type.toUpperCase()+'</span>';
+    $('fw-size').textContent=fmt(d.size);$('fw-code').textContent=fmt(d.code_size);
+    $('fw-tiles').textContent=d.tiles;$('fw-segs').textContent=d.segments;
+    $('fw-entry0').textContent=d.entry0==='0x00000000'?'boot ROM':d.entry0;
+    $('fw-entry1').textContent=d.entry1==='0x00000000'?'boot ROM':d.entry1;
+    show('fw-info');$('status').textContent='Ready.';
+    if(uploadedType==='svf'){$('fw-tiles').textContent='--';$('fw-segs').textContent='--';$('fw-entry0').textContent='--';$('fw-entry1').textContent='--';$('fw-code').textContent=fmt(d.size);}
     updateButtons();
-  } catch(e) {
-    $('status').textContent = 'Upload failed: ' + e.message;
-  }
+  }catch(e){$('status').textContent='Upload failed: '+e.message;}
 }
 
-let pollTimer = null;
-
-async function flash(mode) {
-  $('btn-ram').disabled = true;
-  $('btn-flash').disabled = true;
-  $('pbar').style.display = 'block';
-  $('pfill').style.width = '0%';
-  $('pfill').className = 'fill';
-  $('status').textContent = 'Starting...';
-
-  try {
-    await fetch('/api/flash?mode=' + mode, { method: 'POST' });
-    pollTimer = setInterval(pollStatus, 500);
-  } catch(e) {
-    $('status').textContent = 'Failed: ' + e.message;
-    updateButtons();
-  }
+let pollTimer=null;
+async function flash(mode){
+  disableAll();show('pbar');$('pfill').style.width='0%';$('pfill').className='fill';$('status').textContent='Starting...';
+  try{await fetch('/api/flash?mode='+mode,{method:'POST'});pollTimer=setInterval(poll,500);}catch(e){$('status').textContent='Failed: '+e.message;updateButtons();}
 }
-
-async function pollStatus() {
-  try {
-    const r = await fetch('/api/status');
-    const d = await r.json();
-    $('status').textContent = d.status;
-
-    if (d.progress >= 0) {
-      $('pfill').style.width = d.progress + '%';
-    }
-
-    if (d.progress >= 100 || d.result < 0) {
-      clearInterval(pollTimer);
-      $('pfill').className = 'fill ' + (d.result === 0 ? 'done' : 'error');
-      updateButtons();
-    }
-  } catch(e) { /* ignore transient errors */ }
+async function playSvf(){
+  disableAll();show('pbar');$('pfill').style.width='0%';$('pfill').className='fill';$('status').textContent='Playing SVF...';
+  try{await fetch('/api/svf',{method:'POST'});pollTimer=setInterval(poll,500);}catch(e){$('status').textContent='Failed: '+e.message;updateButtons();}
+}
+function disableAll(){$('btn-ram').disabled=$('btn-flash').disabled=$('btn-svf').disabled=true;}
+async function poll(){
+  try{const r=await fetch('/api/status');const d=await r.json();$('status').textContent=d.status;
+    if(d.progress>=0)$('pfill').style.width=d.progress+'%';
+    if(d.progress>=100||d.result<0){clearInterval(pollTimer);$('pfill').className='fill '+(d.result===0?'done':'error');updateButtons();}
+  }catch(e){}
 }
 </script>
 </body>
