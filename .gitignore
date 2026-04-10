@@ -8,3 +8,4 @@ test/test_xe_parser
 .idea/
 *.swp
 *.swo
+*.dSYM/
