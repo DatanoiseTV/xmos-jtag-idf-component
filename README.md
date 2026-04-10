@@ -158,7 +158,9 @@ GPIO  (SRST)  ──>  RST_N       (open-drain, optional)
 GND           ──>  GND
 ```
 
-### Waveshare ESP32-P4-NANO -- Right Header
+### Waveshare ESP32-P4-NANO
+
+<img src="docs/jtag_pinout.svg" alt="ESP32-P4-NANO JTAG Pinout" width="600" />
 
 | Signal | GPIO | Position |
 |---|---|---|
