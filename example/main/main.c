@@ -194,24 +194,31 @@ static esp_err_t handler_identify(httpd_req_t *req)
     esp_err_t err = xmos_jtag_identify(s_jtag, &s_chip_info);
     s_identified = (err == ESP_OK && s_chip_info.family != XMOS_FAMILY_UNKNOWN);
 
-    const char *family = "Unknown";
-    switch (s_chip_info.family) {
-        case XMOS_FAMILY_XS1: family = "XS1"; break;
-        case XMOS_FAMILY_XS2: family = "xCORE-200 (XS2)"; break;
-        case XMOS_FAMILY_XS3: family = "xCORE.ai (XS3)"; break;
-        default: break;
+    const char *family;
+    if (err == ESP_ERR_NOT_FOUND) {
+        family = "No device connected";
+    } else {
+        switch (s_chip_info.family) {
+            case XMOS_FAMILY_XS1: family = "XS1"; break;
+            case XMOS_FAMILY_XS2: family = "xCORE-200 (XS2)"; break;
+            case XMOS_FAMILY_XS3: family = "xCORE.ai (XS3)"; break;
+            default: family = "Unknown device"; break;
+        }
     }
 
     if (s_identified)
         xmos_jtag_bscan_detect(s_jtag, &s_bsr_len);
 
+    char idstr[16] = "--";
+    if (err != ESP_ERR_NOT_FOUND)
+        snprintf(idstr, sizeof(idstr), "0x%08lx", (unsigned long)s_chip_info.idcode);
+
     char json[320];
     snprintf(json, sizeof(json),
-        "{\"ok\":%s,\"idcode\":\"0x%08lx\",\"family\":\"%s\","
+        "{\"ok\":%s,\"idcode\":\"%s\",\"family\":\"%s\","
         "\"tiles\":%d,\"revision\":%d,\"bsr_len\":%zu}",
         s_identified ? "true" : "false",
-        (unsigned long)s_chip_info.idcode,
-        family, s_chip_info.num_tiles, s_chip_info.revision,
+        idstr, family, s_chip_info.num_tiles, s_chip_info.revision,
         s_bsr_len);
 
     httpd_resp_set_type(req, "application/json");

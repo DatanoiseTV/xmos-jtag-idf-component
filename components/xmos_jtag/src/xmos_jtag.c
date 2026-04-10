@@ -545,6 +545,13 @@ esp_err_t xmos_jtag_identify(xmos_jtag_handle_t h,
     ESP_LOGI(TAG, "JTAG IDCODE: 0x%08lx", (unsigned long)idcode);
 
     memset(chip_info, 0, sizeof(*chip_info));
+
+    /* All-1s or all-0s means no device connected (TDO floating) */
+    if (idcode == 0xFFFFFFFF || idcode == 0x00000000) {
+        ESP_LOGW(TAG, "No device detected (IDCODE=0x%08lx)", (unsigned long)idcode);
+        chip_info->family = XMOS_FAMILY_UNKNOWN;
+        return ESP_ERR_NOT_FOUND;
+    }
     chip_info->idcode = idcode;
     chip_info->revision = (idcode >> 28) & 0xF;
 
